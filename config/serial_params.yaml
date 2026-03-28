@@ -4,3 +4,7 @@ serial_node:
     baud_rate: 921600
     timeout: 0.1
     loop_rate: 50
+    auto_aim_topic: "/auto_aim"
+    vision_timeout: 0.2
+    default_frame_x: 0
+    default_frame_y: 0
