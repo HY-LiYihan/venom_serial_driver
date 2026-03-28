@@ -60,14 +60,14 @@ class HardwareTest:
             else:
                 self.rx_buffer.pop(0)
 
-    def send_control(self, lx=0, ly=0, lz=0, ax=0, ay=0, az=0):
+    def send_control(self, lx=0, ly=0, lz=0, chassis_wz=0, ay=0, az=0):
         """发送控制指令"""
         ctrl = serial_protocol.RobotCtrlData()
         ctrl.flags = 0x07
         ctrl.lx = float(lx)
         ctrl.ly = float(ly)
         ctrl.lz = float(lz)
-        ctrl.ax = float(ax)
+        ctrl.chassis_wz = float(chassis_wz)
         ctrl.ay = float(ay)
         ctrl.az = float(az)
         ctrl.dist = 0.0

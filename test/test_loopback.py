@@ -47,7 +47,7 @@ def test_ctrl_frame():
     ctrl.lx = 0.0
     ctrl.ly = 0.0
     ctrl.lz = 0.0
-    ctrl.ax = 0.0
+    ctrl.chassis_wz = 0.0
     ctrl.ay = 15.5
     ctrl.az = -20.3
     ctrl.dist = 2.5
@@ -120,7 +120,7 @@ def test_txrx_loopback(port='/dev/ttyUSB0'):
     """测试完整协议收发 (TX-RX 短接)"""
     print(f"\n=== 测试协议收发回环: {port} ===")
 
-    serial = SerialInterface(port, 115200, 0.5)
+    serial = SerialInterface(port, 921600, 0.5)
     if not serial.connect():
         print("❌ 串口连接失败")
         return False
