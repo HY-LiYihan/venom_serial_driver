@@ -123,14 +123,15 @@ class SerialDriverNode(Node):
         """Merge cached cmd_vel and auto_aim values and send a control frame.
 
         Skips sending if no cmd_vel has been received yet.
-        Field mapping:
-            lx/ly/lz  <- /cmd_vel linear.x/y/z  (chassis motion)
-            ay        <- /auto_aim pitch          (gimbal pitch angle, rad)
-            az        <- /auto_aim yaw            (gimbal yaw angle, rad)
-            flags     <- /auto_aim detected/tracking/fire (bit0/1/2)
-            dist      <- /auto_aim distance
-            frame_x   <- /auto_aim proj_x
-            frame_y   <- /auto_aim proj_y
+        Field mapping (matches Vision_navigation_ctrl_payload_t in firmware):
+            lx/ly/lz    <- /cmd_vel linear.x/y/z  (chassis velocity, m/s)
+            chassis_wz  <- 0.0 (angular_x in firmware: chassis rotation, currently unused)
+            ay          <- /auto_aim pitch          (gimbal pitch angle, rad)
+            az          <- /auto_aim yaw            (gimbal yaw angle, rad)
+            flags       <- /auto_aim detected/tracking/fire (bit0/1/2)
+            dist        <- /auto_aim distance
+            frame_x     <- /auto_aim proj_x
+            frame_y     <- /auto_aim proj_y
         """
         if self._latest_cmd_vel is None:
             return
@@ -147,7 +148,7 @@ class SerialDriverNode(Node):
         ctrl.lx = float(cmd.linear.x)
         ctrl.ly = float(cmd.linear.y)
         ctrl.lz = float(cmd.linear.z)
-        ctrl.ax = 0.0  # reserved
+        ctrl.chassis_wz = 0.0  # angular_x in firmware: chassis rotation, currently unused
 
         # Gimbal control and aim state from /auto_aim
         if aim is not None:

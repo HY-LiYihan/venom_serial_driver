@@ -1,43 +1,65 @@
-"""
-DJI C-board 通信协议实现
-基于 vision_comm.h 和协议文档
+"""Binary protocol implementation for DJI C-board serial communication.
+
+Implements the frame packing and unpacking logic based on
+vision_navigation_protocol.h from the C-board firmware.
 """
 import struct
 from .crc_utils import crc16, verify_crc16, append_crc16
 
-# 协议常量
-SOF_TX = 0xA5  # NUC发送给C板
-SOF_RX = 0x5A  # C板发送给NUC
-CMD_ID_STATE = 0x01  # C板状态数据
-CMD_ID_CTRL = 0x02   # 视觉控制指令
+# ---------------------------------------------------------------------------
+# Protocol constants
+# ---------------------------------------------------------------------------
+SOF_TX = 0xA5  # NUC -> C-board (same SOF byte for both directions)
+SOF_RX = 0xA5  # C-board -> NUC
+CMD_ID_STATE = 0x01  # C-board feedback frame
+CMD_ID_CTRL = 0x02   # Vision/navigation control frame
 
 
 class RobotCtrlData:
-    """机器人控制数据 (NUC → C板) - 33字节格式"""
+    """Control data sent from NUC to C-board (Vision_navigation_ctrl_payload_t).
+
+    Packed format: <B7f2H (33 bytes total).
+    Field order matches the firmware struct exactly:
+        status_flags  (uint8)
+        linear_x      (float) - chassis forward/backward velocity (m/s)
+        linear_y      (float) - chassis left/right velocity (m/s)
+        linear_z      (float) - reserved, set to 0
+        chassis_wz    (float) - angular_x in firmware; chassis rotation (rad/s), currently 0
+        angular_y     (float) - gimbal pitch angle (rad)
+        angular_z     (float) - gimbal yaw angle (rad)
+        distance      (float) - reserved
+        frame_x       (uint16) - target pixel x
+        frame_y       (uint16) - target pixel y
+    """
+
     def __init__(self):
-        self.flags = 0  # 控制标志位
-        self.lx = 0.0
-        self.ly = 0.0
-        self.lz = 0.0
-        self.ax = 0.0
-        self.ay = 0.0
-        self.az = 0.0
-        self.dist = 0.0
-        self.frame_x = 0
-        self.frame_y = 0
+        self.flags = 0        # status_flags: bit0=detected, bit1=tracking, bit2=fire
+        self.lx = 0.0         # linear_x
+        self.ly = 0.0         # linear_y
+        self.lz = 0.0         # linear_z (reserved)
+        self.chassis_wz = 0.0 # angular_x in firmware: chassis rotation (rad/s)
+        self.ay = 0.0         # angular_y: gimbal pitch (rad)
+        self.az = 0.0         # angular_z: gimbal yaw (rad)
+        self.dist = 0.0       # distance (reserved)
+        self.frame_x = 0      # target pixel x
+        self.frame_y = 0      # target pixel y
 
     def pack(self) -> bytes:
-        """打包为字节流 (小端序) - 格式: <B7f2H"""
+        """Pack into little-endian byte stream. Format: <B7f2H."""
         return struct.pack('<B7f2H',
                           self.flags,
                           self.lx, self.ly, self.lz,
-                          self.ax, self.ay, self.az,
+                          self.chassis_wz, self.ay, self.az,
                           self.dist,
                           self.frame_x, self.frame_y)
 
 
 class RobotStateData:
-    """机器人状态数据 (C板 → NUC)"""
+    """State data received from C-board (Vision_navigation_feedback_payload_t).
+
+    Packed format: <I9fBHB3HB2HB2f2HI (72 bytes total).
+    """
+
     def __init__(self):
         self.timestamp_us = 0
         self.linear_x = 0.0
@@ -68,7 +90,14 @@ class RobotStateData:
 
     @staticmethod
     def unpack(data: bytes):
-        """从字节流解包 (小端序) - 72字节格式"""
+        """Unpack from little-endian byte stream (72-byte payload).
+
+        Args:
+            data: Raw payload bytes (must be at least 72 bytes).
+
+        Returns:
+            RobotStateData instance, or None if data is too short.
+        """
         if len(data) < 72:
             return None
 
@@ -94,6 +123,7 @@ class RobotStateData:
         state.power_management = unpacked[16]
         state.shooter_17mm_barrel_heat = unpacked[17]
         state.shooter_42mm_barrel_heat = unpacked[18]
+        # armor_id_and_reason is a single byte: low 4 bits = armor_id, high 4 bits = reason
         state.armor_id = unpacked[19] & 0x0F
         state.HP_deduction_reason = (unpacked[19] >> 4) & 0x0F
         state.launching_frequency = unpacked[20]
@@ -106,14 +136,29 @@ class RobotStateData:
 
 
 def pack_ctrl_frame(ctrl_data: RobotCtrlData) -> bytes:
-    """打包控制帧 (NUC → C板)"""
+    """Pack a control frame for transmission to the C-board (NUC -> C-board).
+
+    Args:
+        ctrl_data: Populated RobotCtrlData instance.
+
+    Returns:
+        Complete frame bytes including header and CRC16.
+    """
     data = ctrl_data.pack()
     frame = struct.pack('<BHB', SOF_TX, len(data), CMD_ID_CTRL) + data
     return append_crc16(frame)
 
 
 def unpack_state_frame(raw_bytes: bytes) -> tuple:
-    """解析状态帧 (C板 → NUC)，返回 (success, state_data)"""
+    """Parse a state feedback frame received from the C-board.
+
+    Args:
+        raw_bytes: Raw bytes starting at the SOF byte.
+
+    Returns:
+        (success, state_data) tuple. success is False if the frame is
+        incomplete, CRC fails, or cmd_id does not match.
+    """
     if len(raw_bytes) < 6:
         return False, None
 
@@ -133,7 +178,5 @@ def unpack_state_frame(raw_bytes: bytes) -> tuple:
     if cmd_id != CMD_ID_STATE:
         return False, None
 
-    state = RobotStateData.unpack(raw_bytes[4:4+data_len])
+    state = RobotStateData.unpack(raw_bytes[4:4 + data_len])
     return True, state
-
-
