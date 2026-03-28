@@ -25,6 +25,19 @@ install(DIRECTORY venom_serial_driver/
   FILES_MATCHING PATTERN "*.py"
 )
 
+# Install executable entry points so ros2 launch can find them
+install(PROGRAMS
+  venom_serial_driver/serial_node.py
+  RENAME serial_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  venom_serial_driver/teleop_node.py
+  RENAME teleop_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
