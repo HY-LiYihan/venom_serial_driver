@@ -4,7 +4,10 @@ Implements the frame packing and unpacking logic based on
 vision_navigation_protocol.h from the C-board firmware.
 """
 import struct
-from .crc_utils import crc16, verify_crc16, append_crc16
+if __package__:
+    from venom_serial_driver.crc_utils import crc16, verify_crc16, append_crc16
+else:
+    from crc_utils import crc16, verify_crc16, append_crc16
 
 # ---------------------------------------------------------------------------
 # Protocol constants

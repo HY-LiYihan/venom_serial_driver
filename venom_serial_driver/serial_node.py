@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """ROS 2 serial driver node for DJI C-board communication.
 
 Bridges ROS 2 topics to the proprietary binary protocol used by the DJI C-board.
@@ -6,14 +7,29 @@ merges them in a timer-driven loop, and sends a single control frame to the C-bo
 Publishes /robot_status and /game_status from incoming C-board state frames.
 """
 import math
+import os
+import sys
+import time
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from auto_aim_interfaces.msg import AutoAimCmd
-from venom_serial_driver.msg import RobotStatus, GameStatus
-import time
-from .serial_interface import SerialInterface
-from . import serial_protocol
+
+if __package__:
+    from venom_serial_driver.msg import RobotStatus, GameStatus
+    from venom_serial_driver.serial_interface import SerialInterface
+    from venom_serial_driver import serial_protocol
+else:
+    script_dir = os.path.dirname(__file__)
+    install_site = os.path.normpath(os.path.join(script_dir, '..', 'python3.10', 'site-packages'))
+    package_dir = os.path.join(install_site, 'venom_serial_driver')
+    for p in (install_site, package_dir):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    from venom_serial_driver.msg import RobotStatus, GameStatus
+    from serial_interface import SerialInterface
+    import serial_protocol
 
 
 class SerialDriverNode(Node):
@@ -29,6 +45,8 @@ class SerialDriverNode(Node):
         self.declare_parameter('vision_timeout', 0.2)
         self.declare_parameter('default_frame_x', 640)
         self.declare_parameter('default_frame_y', 360)
+        self.declare_parameter('pitch_sign', 1.0)
+        self.declare_parameter('yaw_sign', 1.0)
 
         # Retrieve parameters
         port = self.get_parameter('port_name').value
@@ -39,6 +57,8 @@ class SerialDriverNode(Node):
         self._vision_timeout = self.get_parameter('vision_timeout').value
         self._default_frame_x = self.get_parameter('default_frame_x').value
         self._default_frame_y = self.get_parameter('default_frame_y').value
+        self._pitch_sign = float(self.get_parameter('pitch_sign').value)
+        self._yaw_sign = float(self.get_parameter('yaw_sign').value)
 
         self.get_logger().info(f'Initializing serial: {port} @ {baudrate}')
 
@@ -60,6 +80,8 @@ class SerialDriverNode(Node):
         self._latest_cmd_vel = None
         self._latest_auto_aim = None
         self._latest_auto_aim_time: float | None = None
+        self._tx_debug_counter = 0
+        self._last_tx_debug_time: float | None = None
 
         # ---------------------------------------------------------------------------
         # Publishers
@@ -172,8 +194,8 @@ class SerialDriverNode(Node):
         # Gimbal control and aim state from /auto_aim
         aim = self._latest_auto_aim if self._is_auto_aim_recent() else None
         if aim is not None:
-            ctrl.ay = math.degrees(float(aim.pitch))
-            ctrl.az = math.degrees(float(aim.yaw))
+            ctrl.ay = self._pitch_sign * float(aim.pitch)
+            ctrl.az = self._yaw_sign * float(aim.yaw)
             ctrl.dist = float(aim.distance)
             ctrl.frame_x = int(aim.proj_x)
             ctrl.frame_y = int(aim.proj_y)
@@ -196,6 +218,32 @@ class SerialDriverNode(Node):
         try:
             frame = serial_protocol.pack_ctrl_frame(ctrl)
             self.serial.write_bytes(frame)
+            self._tx_debug_counter += 1
+            if self._tx_debug_counter % 10 == 0:
+                now = time.time()
+                tx_hz = 0.0
+                if self._last_tx_debug_time is not None:
+                    dt = now - self._last_tx_debug_time
+                    if dt > 1e-6:
+                        tx_hz = 10.0 / dt
+                self._last_tx_debug_time = now
+                self.get_logger().info(
+                    '[TX] t=%.3f hz=%.1f flags=%d pitch=%.4f yaw=%.4f dist=%.2f '
+                    'frame=(%d,%d) cmd_vel=(%.2f,%.2f,%.2f,%.2f)' % (
+                        now,
+                        tx_hz,
+                        ctrl.flags,
+                        ctrl.ay,
+                        ctrl.az,
+                        ctrl.dist,
+                        ctrl.frame_x,
+                        ctrl.frame_y,
+                        ctrl.lx,
+                        ctrl.ly,
+                        ctrl.lz,
+                        ctrl.chassis_wz,
+                    )
+                )
         except Exception as e:
             self.get_logger().error(f'[ERROR] Failed to send ctrl frame: {e}')
 
