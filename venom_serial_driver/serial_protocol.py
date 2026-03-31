@@ -28,8 +28,8 @@ class RobotCtrlData:
         linear_y      (float) - chassis left/right velocity (m/s)
         linear_z      (float) - reserved, set to 0
         chassis_wz    (float) - angular_x in firmware; chassis rotation (rad/s)
-        angular_y     (float) - gimbal pitch angle (deg)
-        angular_z     (float) - gimbal yaw angle (deg)
+        angular_y     (float) - gimbal pitch angle (rad)
+        angular_z     (float) - gimbal yaw angle (rad)
         distance      (float) - reserved
         frame_x       (uint16) - target pixel x
         frame_y       (uint16) - target pixel y
@@ -41,8 +41,8 @@ class RobotCtrlData:
         self.ly = 0.0         # linear_y
         self.lz = 0.0         # linear_z (reserved)
         self.chassis_wz = 0.0 # angular_x in firmware: chassis rotation (rad/s)
-        self.ay = 0.0         # angular_y: gimbal pitch (deg)
-        self.az = 0.0         # angular_z: gimbal yaw (deg)
+        self.ay = 0.0         # angular_y: gimbal pitch (rad)
+        self.az = 0.0         # angular_z: gimbal yaw (rad)
         self.dist = 0.0       # distance (reserved)
         self.frame_x = 0      # target pixel x
         self.frame_y = 0      # target pixel y

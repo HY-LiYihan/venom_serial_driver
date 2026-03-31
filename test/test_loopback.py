@@ -11,7 +11,7 @@ from venom_serial_driver import serial_protocol
 from venom_serial_driver.crc_utils import crc16
 
 
-def test_loopback(port='/dev/ttyUSB0'):
+def test_loopback(port='/dev/ttyACM0'):
     """测试串口回环 (TX-RX 短接)"""
     print(f"\n=== 测试串口回环: {port} ===")
 
@@ -80,7 +80,7 @@ def test_state_frame():
                        123456789,      # timestamp_us
                        1.0, 0.5, 0.0,  # linear_x, y, z
                        0.2,            # gyro_wz
-                       10.5, -15.3,    # angular_y, z
+                       0.18, -0.27,    # angular_y, z (rad)
                        2.1, -3.5,      # angular_y_speed, z_speed
                        1.5,            # distance
                        3,              # game_progress
@@ -108,7 +108,7 @@ def test_state_frame():
     if success and parsed:
         print(f"✓ 解析成功")
         print(f"  timestamp: {parsed.timestamp_us}")
-        print(f"  pitch: {parsed.angular_y:.2f}, yaw: {parsed.angular_z:.2f}")
+        print(f"  pitch: {parsed.angular_y:.4f} rad, yaw: {parsed.angular_z:.4f} rad")
         print(f"  HP: {parsed.current_HP}/{parsed.maximum_HP}")
         return True
     else:
@@ -167,4 +167,3 @@ if __name__ == '__main__':
     total = len(results)
     passed = sum(1 for _, result in results if result)
     print(f"\n总计: {passed}/{total} 通过")
-

@@ -80,7 +80,7 @@ class HardwareTest:
     def test_yaw_rotation(self, duration=10.0):
         """Yaw 轴旋转测试"""
         print(f"\n=== Yaw 旋转测试 (持续 {duration}s) ===")
-        print("参数: pitch=0°, yaw=±30°, 角速度=10°/s, 频率=200Hz\n")
+        print("参数: pitch=0 rad, yaw=±0.5236 rad, 角速度=0.1745 rad/s, 频率=200Hz\n")
 
         if not self.serial.connect():
             print("❌ 串口连接失败")
@@ -88,8 +88,8 @@ class HardwareTest:
 
         self.start_receiver()
 
-        yaw_range = math.radians(30)
-        angular_speed = math.radians(10)
+        yaw_range = math.pi / 6.0
+        angular_speed = math.pi / 18.0
         freq = 200
         dt = 1.0 / freq
 
@@ -105,7 +105,7 @@ class HardwareTest:
                 send_count += 1
 
                 if send_count % 200 == 0:
-                    print(f"[{t:.1f}s] 发送: {send_count} 帧, 接收: {self.frame_count} 帧, Yaw: {math.degrees(yaw):.1f}°")
+                    print(f"[{t:.1f}s] 发送: {send_count} 帧, 接收: {self.frame_count} 帧, Yaw: {yaw:.4f} rad")
 
                 time.sleep(dt)
         except KeyboardInterrupt:
@@ -194,6 +194,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
 

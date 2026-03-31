@@ -35,8 +35,8 @@ Both directions use the same SOF byte (`0xA5`) and the same 4-byte header format
 | 5–8 | `linear_y` | `float32` | Chassis left/right velocity (m/s) |
 | 9–12 | `linear_z` | `float32` | Reserved, set to 0 |
 | 13–16 | `angular_x` | `float32` | Chassis rotation angular velocity (rad/s) |
-| 17–20 | `angular_y` | `float32` | Gimbal pitch angle command (deg) |
-| 21–24 | `angular_z` | `float32` | Gimbal yaw angle command (deg) |
+| 17–20 | `angular_y` | `float32` | Gimbal pitch angle command (rad) |
+| 21–24 | `angular_z` | `float32` | Gimbal yaw angle command (rad) |
 | 25–28 | `distance` | `float32` | Reserved |
 | 29–30 | `frame_x` | `uint16` | Target pixel x coordinate |
 | 31–32 | `frame_y` | `uint16` | Target pixel y coordinate |
@@ -58,8 +58,8 @@ Both directions use the same SOF byte (`0xA5`) and the same 4-byte header format
 | 8–11 | `linear_y` | `float32` | Chassis left/right velocity (m/s) |
 | 12–15 | `linear_z` | `float32` | Reserved |
 | 16–19 | `gyro_wz` | `float32` | Chassis rotation angular velocity (rad/s) |
-| 20–23 | `angular_y` | `float32` | Gimbal pitch angle (deg) |
-| 24–27 | `angular_z` | `float32` | Gimbal yaw angle (deg) |
+| 20–23 | `angular_y` | `float32` | Gimbal pitch angle (rad) |
+| 24–27 | `angular_z` | `float32` | Gimbal yaw angle (rad) |
 | 28–31 | `angular_y_speed` | `float32` | Gimbal pitch angular velocity (rad/s) |
 | 32–35 | `angular_z_speed` | `float32` | Gimbal yaw angular velocity (rad/s) |
 | 36–39 | `distance` | `float32` | Reserved |

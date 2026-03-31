@@ -32,7 +32,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'port_name',
-            default_value='/dev/ttyUSB0',
+            default_value='/dev/ttyACM0',
             description='Serial port name'
         ),
         DeclareLaunchArgument(

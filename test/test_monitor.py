@@ -55,8 +55,8 @@ class SerialMonitor:
                 freq = self.frame_count / elapsed if elapsed > 0 else 0
 
                 print(f"[{self.frame_count:05d}] "
-                      f"Pitch: {state.angular_y:6.2f}° "
-                      f"Yaw: {state.angular_z:6.2f}° "
+                      f"Pitch: {state.angular_y:7.4f} rad "
+                      f"Yaw: {state.angular_z:7.4f} rad "
                       f"HP: {state.current_HP}/{state.maximum_HP} "
                       f"Freq: {freq:.1f}Hz")
 
@@ -79,7 +79,7 @@ class SerialMonitor:
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', default='/dev/ttyUSB0')
+    parser.add_argument('--port', default='/dev/ttyACM0')
     args = parser.parse_args()
 
     monitor = SerialMonitor(args.port)

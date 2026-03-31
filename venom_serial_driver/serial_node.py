@@ -3,10 +3,9 @@
 
 Bridges ROS 2 topics to the proprietary binary protocol used by the DJI C-board.
 Subscribes to /cmd_vel (chassis motion) and /auto_aim (gimbal control + aim state),
-merges them in a timer-driven loop, and sends a single control frame to the C-board.
+caches the latest values, and sends a control frame whenever either input updates.
 Publishes /robot_status and /game_status from incoming C-board state frames.
 """
-import math
 import os
 import sys
 import time
@@ -32,6 +31,11 @@ else:
     import serial_protocol
 
 
+def _hexdump(data: bytes) -> str:
+    """Format raw bytes as uppercase hex pairs."""
+    return ' '.join(f'{byte:02X}' for byte in data)
+
+
 class SerialDriverNode(Node):
     def __init__(self):
         super().__init__('serial_node')
@@ -43,8 +47,8 @@ class SerialDriverNode(Node):
         self.declare_parameter('loop_rate', 50)
         self.declare_parameter('auto_aim_topic', '/auto_aim')
         self.declare_parameter('vision_timeout', 0.2)
-        self.declare_parameter('default_frame_x', 640)
-        self.declare_parameter('default_frame_y', 360)
+        self.declare_parameter('default_frame_x', 0)
+        self.declare_parameter('default_frame_y', 0)
         self.declare_parameter('pitch_sign', 1.0)
         self.declare_parameter('yaw_sign', 1.0)
 
@@ -77,8 +81,8 @@ class SerialDriverNode(Node):
         # ---------------------------------------------------------------------------
         # Latest values from subscriptions (timer-driven merge)
         # ---------------------------------------------------------------------------
-        self._latest_cmd_vel = None
-        self._latest_auto_aim = None
+        self._latest_cmd_vel = Twist()
+        self._latest_auto_aim = AutoAimCmd()
         self._latest_auto_aim_time: float | None = None
         self._tx_debug_counter = 0
         self._last_tx_debug_time: float | None = None
@@ -97,21 +101,23 @@ class SerialDriverNode(Node):
         self.auto_aim_sub = self.create_subscription(
             AutoAimCmd, auto_aim_topic, self._auto_aim_callback, 10)
 
-        # Timer
-        self.timer = self.create_timer(1.0 / rate, self._timer_callback)
+        # Poll serial RX at a fixed rate; TX is event-driven from subscriptions.
+        self.rx_timer = self.create_timer(1.0 / rate, self._poll_serial_rx)
 
     # ---------------------------------------------------------------------------
     # Subscription callbacks (cache only)
     # ---------------------------------------------------------------------------
 
     def _cmd_vel_callback(self, msg: Twist) -> None:
-        """Cache the latest chassis velocity command."""
+        """Cache the latest chassis velocity command and trigger a TX frame."""
         self._latest_cmd_vel = msg
+        self._send_cached_ctrl_frame('cmd_vel')
 
     def _auto_aim_callback(self, msg: AutoAimCmd) -> None:
-        """Cache the latest auto-aim command and record its arrival time."""
+        """Cache the latest auto-aim command, timestamp it, and trigger a TX frame."""
         self._latest_auto_aim = msg
         self._latest_auto_aim_time = time.time()
+        self._send_cached_ctrl_frame('auto_aim')
 
     def _is_auto_aim_recent(self) -> bool:
         """Return True if an auto-aim message arrived within vision_timeout seconds."""
@@ -121,11 +127,11 @@ class SerialDriverNode(Node):
         )
 
     # ---------------------------------------------------------------------------
-    # Timer callback: read serial RX, then send merged control frame
+    # Timer callback: read serial RX only
     # ---------------------------------------------------------------------------
 
-    def _timer_callback(self) -> None:
-        """Read incoming serial data, publish status topics, then send control frame."""
+    def _poll_serial_rx(self) -> None:
+        """Read incoming serial data and publish decoded status topics."""
         if not self.serial.is_connected():
             return
 
@@ -153,36 +159,27 @@ class SerialDriverNode(Node):
             else:
                 self.rx_buffer.pop(0)
 
-        # Send merged control frame
-        self._send_ctrl_frame()
-
     # ---------------------------------------------------------------------------
-    # Control frame: merge /cmd_vel and /auto_aim, send to C-board
+    # Control frame: merge cached /cmd_vel and /auto_aim, send to C-board
     # ---------------------------------------------------------------------------
 
-    def _send_ctrl_frame(self) -> None:
-        """Merge cached venom_cmd_vel and auto_aim values and send a control frame.
+    def _send_cached_ctrl_frame(self, trigger_source: str) -> None:
+        """Send a control frame composed from the latest cached control inputs.
 
-        Skips sending if no venom_cmd_vel has been received yet.
         Field mapping (matches Vision_navigation_ctrl_payload_t in firmware):
             lx/ly/lz    <- /venom_cmd_vel linear.x/y/z  (chassis velocity, m/s)
             chassis_wz  <- /venom_cmd_vel angular.z      (chassis rotation, rad/s)
-            ay          <- /auto_aim pitch                (gimbal pitch angle, deg; converted from rad)
-            az          <- /auto_aim yaw                  (gimbal yaw angle, deg; converted from rad)
+            ay          <- /auto_aim pitch                (gimbal pitch angle, rad)
+            az          <- /auto_aim yaw                  (gimbal yaw angle, rad)
             flags       <- /auto_aim detected/tracking/fire (bit0/1/2)
             dist        <- /auto_aim distance
             frame_x     <- /auto_aim proj_x
             frame_y     <- /auto_aim proj_y
         """
-        if self._latest_cmd_vel is None:
-            return
-
         if not self.serial.is_connected():
             return
 
         cmd = self._latest_cmd_vel
-        aim = self._latest_auto_aim  # may be overridden by timeout check below
-
         ctrl = serial_protocol.RobotCtrlData()
 
         # Chassis motion from /cmd_vel (linear fields only)
@@ -219,31 +216,32 @@ class SerialDriverNode(Node):
             frame = serial_protocol.pack_ctrl_frame(ctrl)
             self.serial.write_bytes(frame)
             self._tx_debug_counter += 1
-            if self._tx_debug_counter % 10 == 0:
-                now = time.time()
-                tx_hz = 0.0
-                if self._last_tx_debug_time is not None:
-                    dt = now - self._last_tx_debug_time
-                    if dt > 1e-6:
-                        tx_hz = 10.0 / dt
-                self._last_tx_debug_time = now
-                self.get_logger().info(
-                    '[TX] t=%.3f hz=%.1f flags=%d pitch=%.4f yaw=%.4f dist=%.2f '
-                    'frame=(%d,%d) cmd_vel=(%.2f,%.2f,%.2f,%.2f)' % (
-                        now,
-                        tx_hz,
-                        ctrl.flags,
-                        ctrl.ay,
-                        ctrl.az,
-                        ctrl.dist,
-                        ctrl.frame_x,
-                        ctrl.frame_y,
-                        ctrl.lx,
-                        ctrl.ly,
-                        ctrl.lz,
-                        ctrl.chassis_wz,
-                    )
+            now = time.time()
+            tx_hz = 0.0
+            if self._last_tx_debug_time is not None:
+                dt = now - self._last_tx_debug_time
+                if dt > 1e-6:
+                    tx_hz = 1.0 / dt
+            self._last_tx_debug_time = now
+            self.get_logger().info(
+                '[TX:%s] t=%.3f hz=%.1f flags=%d lx=%.4f ly=%.4f lz=%.4f wz=%.4f '
+                'pitch=%.4f yaw=%.4f dist=%.4f frame=(%d,%d) raw=%s' % (
+                    trigger_source,
+                    now,
+                    tx_hz,
+                    ctrl.flags,
+                    ctrl.lx,
+                    ctrl.ly,
+                    ctrl.lz,
+                    ctrl.chassis_wz,
+                    ctrl.ay,
+                    ctrl.az,
+                    ctrl.dist,
+                    ctrl.frame_x,
+                    ctrl.frame_y,
+                    _hexdump(frame),
                 )
+            )
         except Exception as e:
             self.get_logger().error(f'[ERROR] Failed to send ctrl frame: {e}')
 
@@ -258,8 +256,8 @@ class SerialDriverNode(Node):
         robot_status.velocity.linear.y = float(state.linear_y)
         robot_status.velocity.linear.z = float(state.linear_z)
         robot_status.velocity.angular.x = float(state.gyro_wz)
-        robot_status.velocity.angular.y = math.radians(float(state.angular_y))
-        robot_status.velocity.angular.z = math.radians(float(state.angular_z))
+        robot_status.velocity.angular.y = float(state.angular_y)
+        robot_status.velocity.angular.z = float(state.angular_z)
         robot_status.angular_speed.angular.y = float(state.angular_y_speed)
         robot_status.angular_speed.angular.z = float(state.angular_z_speed)
         self.robot_status_pub.publish(robot_status)

@@ -43,8 +43,8 @@ ros2 launch venom_serial_driver serial_driver.launch.py \
 | 方向 | 话题 | 消息类型 | 说明 |
 |---|---|---|---|
 | 订阅 | `/cmd_vel` | `geometry_msgs/Twist` | 底盘速度指令（仅 linear 字段） |
-| 订阅 | `/auto_aim` | `AutoAimCmd` | 云台角度指令 + 自瞄状态 |
-| 发布 | `/robot_status` | `RobotStatus` | 底盘速度 + 云台角度反馈 |
+| 订阅 | `/auto_aim` | `AutoAimCmd` | 云台角度指令 + 自瞄状态，角度单位为 `rad` |
+| 发布 | `/robot_status` | `RobotStatus` | 底盘速度 + 云台角度反馈，角度单位为 `rad` |
 | 发布 | `/game_status` | `GameStatus` | 比赛状态、血量、热量等 |
 
 ## 参数配置
@@ -73,6 +73,9 @@ python3 test/test_loopback.py
 
 # 实时状态监控（需要串口连接）
 python3 test/test_monitor.py --port /dev/ttyUSB0
+
+# 协议监视与测试发送（yaw/pitch 使用 rad）
+python3 test/test_protocol_monitor.py --port /dev/ttyUSB0 --send-test --yaw 0.1 --pitch -0.05
 
 # 硬件运动测试
 python3 test/test_hardware.py --port /dev/ttyUSB0 --test yaw

@@ -22,7 +22,7 @@ class ProtocolMonitor:
         self.frame_count = 0
         self.start_time = None
 
-    def send_test_frame(self, yaw_deg: float, pitch_deg: float, detected: bool,
+    def send_test_frame(self, yaw_rad: float, pitch_rad: float, detected: bool,
                         tracking: bool, fire: bool, distance: float,
                         frame_x: int, frame_y: int) -> None:
         ctrl = serial_protocol.RobotCtrlData()
@@ -31,15 +31,15 @@ class ProtocolMonitor:
             (0x02 if tracking else 0) |
             (0x04 if fire else 0)
         )
-        ctrl.ay = pitch_deg
-        ctrl.az = yaw_deg
+        ctrl.ay = pitch_rad
+        ctrl.az = yaw_rad
         ctrl.dist = distance
         ctrl.frame_x = frame_x
         ctrl.frame_y = frame_y
         frame = serial_protocol.pack_ctrl_frame(ctrl)
         self.serial.write_bytes(frame)
         print("TX ctrl frame:")
-        print(f"  flags={ctrl.flags:#04x} pitch={ctrl.ay:.2f} yaw={ctrl.az:.2f} "
+        print(f"  flags={ctrl.flags:#04x} pitch={ctrl.ay:.4f}rad yaw={ctrl.az:.4f}rad "
               f"dist={ctrl.dist:.2f} frame=({ctrl.frame_x},{ctrl.frame_y})")
         print(f"  raw={hexdump(frame)}")
 
@@ -83,8 +83,8 @@ class ProtocolMonitor:
                 elapsed = max(time.time() - self.start_time, 1e-6)
                 freq = self.frame_count / elapsed
                 print(f"[RX {self.frame_count:05d}] "
-                      f"pitch={state.angular_y:7.2f}deg "
-                      f"yaw={state.angular_z:7.2f}deg "
+                      f"pitch={state.angular_y:8.4f}rad "
+                      f"yaw={state.angular_z:8.4f}rad "
                       f"pitch_v={state.angular_y_speed:7.2f} "
                       f"yaw_v={state.angular_z_speed:7.2f} "
                       f"dist={state.distance:5.2f} "
@@ -112,8 +112,8 @@ def main() -> None:
     parser.add_argument("--raw", action="store_true", help="Print raw frame hex dump")
     parser.add_argument("--send-test", action="store_true",
                         help="Send one test control frame before listening")
-    parser.add_argument("--yaw", type=float, default=5.0, help="Test yaw in deg")
-    parser.add_argument("--pitch", type=float, default=-2.0, help="Test pitch in deg")
+    parser.add_argument("--yaw", type=float, default=0.0873, help="Test yaw in rad")
+    parser.add_argument("--pitch", type=float, default=-0.0349, help="Test pitch in rad")
     parser.add_argument("--distance", type=float, default=2.5)
     parser.add_argument("--frame-x", type=int, default=640)
     parser.add_argument("--frame-y", type=int, default=360)
@@ -130,8 +130,8 @@ def main() -> None:
     try:
         if args.send_test:
             monitor.send_test_frame(
-                yaw_deg=args.yaw,
-                pitch_deg=args.pitch,
+                yaw_rad=args.yaw,
+                pitch_rad=args.pitch,
                 detected=args.detected,
                 tracking=args.tracking,
                 fire=args.fire,
