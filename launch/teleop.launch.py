@@ -19,11 +19,11 @@ def generate_launch_description():
     declare_angular_speed = DeclareLaunchArgument(
         'angular_speed',
         default_value='1.0',
-        description='Chassis rotation speed (rad/s)'
+        description='Chassis motion angular velocity (non-spin, rad/s)'
     )
     declare_topic = DeclareLaunchArgument(
         'topic',
-        default_value='/venom_cmd_vel',
+        default_value='/cmd_vel',
         description='Topic to publish Twist commands on'
     )
 

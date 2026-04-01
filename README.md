@@ -42,7 +42,7 @@ ros2 launch venom_serial_driver serial_driver.launch.py \
 
 | 方向 | 话题 | 消息类型 | 说明 |
 |---|---|---|---|
-| 订阅 | `/cmd_vel` | `geometry_msgs/Twist` | 底盘速度指令（仅 linear 字段） |
+| 订阅 | `/cmd_vel` | `geometry_msgs/Twist` | 底盘速度指令（`linear.x/y` + `angular.z`，其中 `angular.z` 映射到协议 `linear_z` 作为底盘运动角速度，非自转） |
 | 订阅 | `/auto_aim` | `AutoAimCmd` | 云台角度指令 + 自瞄状态，角度单位为 `rad` |
 | 发布 | `/robot_status` | `RobotStatus` | 底盘速度 + 云台角度反馈，角度单位为 `rad` |
 | 发布 | `/game_status` | `GameStatus` | 比赛状态、血量、热量等 |
@@ -58,6 +58,8 @@ serial_node:
     baud_rate: 921600           # 波特率
     timeout: 0.1                # 读取超时（秒）
     loop_rate: 50               # 定时器频率（Hz）
+    cmd_vel_topic: "/cmd_vel"   # 底盘速度指令订阅话题
+    auto_aim_topic: "/auto_aim" # 自瞄指令订阅话题
 ```
 
 ## 文档

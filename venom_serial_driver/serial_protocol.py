@@ -26,8 +26,8 @@ class RobotCtrlData:
         status_flags  (uint8)
         linear_x      (float) - chassis forward/backward velocity (m/s)
         linear_y      (float) - chassis left/right velocity (m/s)
-        linear_z      (float) - reserved, set to 0
-        chassis_wz    (float) - angular_x in firmware; chassis rotation (rad/s)
+        linear_z      (float) - chassis motion angular velocity (non-spin, rad/s)
+        chassis_wz    (float) - angular_x in firmware; reserved by current project convention
         angular_y     (float) - gimbal pitch angle (rad)
         angular_z     (float) - gimbal yaw angle (rad)
         distance      (float) - reserved
@@ -39,8 +39,8 @@ class RobotCtrlData:
         self.flags = 0        # status_flags: bit0=detected, bit1=tracking, bit2=fire
         self.lx = 0.0         # linear_x
         self.ly = 0.0         # linear_y
-        self.lz = 0.0         # linear_z (reserved)
-        self.chassis_wz = 0.0 # angular_x in firmware: chassis rotation (rad/s)
+        self.lz = 0.0         # linear_z: chassis motion angular velocity (non-spin, rad/s)
+        self.chassis_wz = 0.0 # angular_x in firmware: reserved by current project convention
         self.ay = 0.0         # angular_y: gimbal pitch (rad)
         self.az = 0.0         # angular_z: gimbal yaw (rad)
         self.dist = 0.0       # distance (reserved)

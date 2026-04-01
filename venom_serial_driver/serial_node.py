@@ -45,6 +45,7 @@ class SerialDriverNode(Node):
         self.declare_parameter('baud_rate', 921600)
         self.declare_parameter('timeout', 0.1)
         self.declare_parameter('loop_rate', 50)
+        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('auto_aim_topic', '/auto_aim')
         self.declare_parameter('vision_timeout', 0.2)
         self.declare_parameter('default_frame_x', 0)
@@ -57,6 +58,7 @@ class SerialDriverNode(Node):
         baudrate = self.get_parameter('baud_rate').value
         timeout = self.get_parameter('timeout').value
         rate = self.get_parameter('loop_rate').value
+        cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
         auto_aim_topic = self.get_parameter('auto_aim_topic').value
         self._vision_timeout = self.get_parameter('vision_timeout').value
         self._default_frame_x = self.get_parameter('default_frame_x').value
@@ -97,7 +99,7 @@ class SerialDriverNode(Node):
         # Subscribers
         # ---------------------------------------------------------------------------
         self.cmd_vel_sub = self.create_subscription(
-            Twist, '/venom_cmd_vel', self._cmd_vel_callback, 10)
+            Twist, cmd_vel_topic, self._cmd_vel_callback, 10)
         self.auto_aim_sub = self.create_subscription(
             AutoAimCmd, auto_aim_topic, self._auto_aim_callback, 10)
 
@@ -110,6 +112,18 @@ class SerialDriverNode(Node):
 
     def _cmd_vel_callback(self, msg: Twist) -> None:
         """Cache the latest chassis velocity command and trigger a TX frame."""
+        if (
+            abs(float(msg.linear.z)) > 1e-6
+            or abs(float(msg.angular.x)) > 1e-6
+            or abs(float(msg.angular.y)) > 1e-6
+        ):
+            self.get_logger().warn(
+                'Received /cmd_vel with unsupported fields: '
+                f'linear.z={msg.linear.z:.4f}, '
+                f'angular.x={msg.angular.x:.4f}, '
+                f'angular.y={msg.angular.y:.4f}. '
+                'Expected usage: linear.x/y + angular.z only.'
+            )
         self._latest_cmd_vel = msg
         self._send_cached_ctrl_frame('cmd_vel')
 
@@ -167,8 +181,9 @@ class SerialDriverNode(Node):
         """Send a control frame composed from the latest cached control inputs.
 
         Field mapping (matches Vision_navigation_ctrl_payload_t in firmware):
-            lx/ly/lz    <- /venom_cmd_vel linear.x/y/z  (chassis velocity, m/s)
-            chassis_wz  <- /venom_cmd_vel angular.z      (chassis rotation, rad/s)
+            lx/ly       <- /cmd_vel linear.x/y          (chassis velocity, m/s)
+            lz          <- /cmd_vel angular.z           (chassis motion angular velocity, non-spin, rad/s)
+            chassis_wz  <- fixed 0.0                    (reserved by current project convention)
             ay          <- /auto_aim pitch                (gimbal pitch angle, rad)
             az          <- /auto_aim yaw                  (gimbal yaw angle, rad)
             flags       <- /auto_aim detected/tracking/fire (bit0/1/2)
@@ -182,11 +197,13 @@ class SerialDriverNode(Node):
         cmd = self._latest_cmd_vel
         ctrl = serial_protocol.RobotCtrlData()
 
-        # Chassis motion from /cmd_vel (linear fields only)
+        # Chassis motion from /cmd_vel.
         ctrl.lx = float(cmd.linear.x)
         ctrl.ly = float(cmd.linear.y)
-        ctrl.lz = float(cmd.linear.z)
-        ctrl.chassis_wz = float(cmd.angular.z)
+        # linear_z carries chassis motion angular velocity (non-spin).
+        ctrl.lz = float(cmd.angular.z)
+        # angular_x/chassis_wz is not used in this project convention.
+        ctrl.chassis_wz = 0.0
 
         # Gimbal control and aim state from /auto_aim
         aim = self._latest_auto_aim if self._is_auto_aim_recent() else None
@@ -223,25 +240,26 @@ class SerialDriverNode(Node):
                 if dt > 1e-6:
                     tx_hz = 1.0 / dt
             self._last_tx_debug_time = now
-            self.get_logger().info(
-                '[TX:%s] t=%.3f hz=%.1f flags=%d lx=%.4f ly=%.4f lz=%.4f wz=%.4f '
-                'pitch=%.4f yaw=%.4f dist=%.4f frame=(%d,%d) raw=%s' % (
-                    trigger_source,
-                    now,
-                    tx_hz,
-                    ctrl.flags,
-                    ctrl.lx,
-                    ctrl.ly,
-                    ctrl.lz,
-                    ctrl.chassis_wz,
-                    ctrl.ay,
-                    ctrl.az,
-                    ctrl.dist,
-                    ctrl.frame_x,
-                    ctrl.frame_y,
-                    _hexdump(frame),
-                )
-            )
+            # Keep the detailed TX log disabled to avoid continuous console spam.
+            # self.get_logger().info(
+            #     '[TX:%s] t=%.3f hz=%.1f flags=%d lx=%.4f ly=%.4f lz=%.4f wz=%.4f '
+            #     'pitch=%.4f yaw=%.4f dist=%.4f frame=(%d,%d) raw=%s' % (
+            #         trigger_source,
+            #         now,
+            #         tx_hz,
+            #         ctrl.flags,
+            #         ctrl.lx,
+            #         ctrl.ly,
+            #         ctrl.lz,
+            #         ctrl.chassis_wz,
+            #         ctrl.ay,
+            #         ctrl.az,
+            #         ctrl.dist,
+            #         ctrl.frame_x,
+            #         ctrl.frame_y,
+            #         _hexdump(frame),
+            #     )
+            # )
         except Exception as e:
             self.get_logger().error(f'[ERROR] Failed to send ctrl frame: {e}')
 

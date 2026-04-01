@@ -33,8 +33,8 @@ Both directions use the same SOF byte (`0xA5`) and the same 4-byte header format
 | 0 | `status_flags` | `uint8` | bit0 = armor_detected, bit1 = tracking_state, bit2 = fire |
 | 1–4 | `linear_x` | `float32` | Chassis forward/backward velocity (m/s) |
 | 5–8 | `linear_y` | `float32` | Chassis left/right velocity (m/s) |
-| 9–12 | `linear_z` | `float32` | Reserved, set to 0 |
-| 13–16 | `angular_x` | `float32` | Chassis rotation angular velocity (rad/s) |
+| 9–12 | `linear_z` | `float32` | Chassis motion angular velocity (non-spin, rad/s) |
+| 13–16 | `angular_x` | `float32` | Reserved by current project convention, set to 0 |
 | 17–20 | `angular_y` | `float32` | Gimbal pitch angle command (rad) |
 | 21–24 | `angular_z` | `float32` | Gimbal yaw angle command (rad) |
 | 25–28 | `distance` | `float32` | Reserved |

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Omnidirectional keyboard teleop node for the Venom robot chassis.
 
-Publishes geometry_msgs/Twist to /venom_cmd_vel. Supports full holonomic
-translation (linear.x/y) and chassis rotation (angular.z) for spin-top mode.
+Publishes geometry_msgs/Twist to /cmd_vel. Supports full holonomic
+translation (linear.x/y) and chassis motion angular velocity (angular.z).
 Designed for the DJI C-board serial driver which maps:
     linear.x/y -> chassis translation (m/s)
-    angular.z  -> chassis_wz rotation (rad/s)
+    angular.z  -> linear_z motion angular velocity (non-spin, rad/s)
 
 Key bindings:
     W / S      forward / backward  (+/- linear.x)
     A / D      strafe left / right (-/+ linear.y)
-    Q / Z      spin CCW / CW       (+/- angular.z)
-    E          stop rotation       (angular.z = 0)
+    Q / Z      increase / decrease motion angular velocity (+/- angular.z)
+    E          stop angular motion (angular.z = 0)
     R / F      increase / decrease linear speed
     T / G      increase / decrease angular speed
     Ctrl-C     quit
@@ -43,10 +43,10 @@ Movement (linear):
   A          strafe left  (-linear.y)
   D          strafe right (+linear.y)
 
-Spin-top (angular.z):
-  Q          spin CCW (+angular.z)
-  Z          spin CW  (-angular.z)
-  E          stop rotation
+Motion angular velocity (angular.z):
+  Q          positive angular motion (+angular.z)
+  Z          negative angular motion (-angular.z)
+  E          stop angular motion
 
 Speed adjustment:
   R / F      linear speed  x1.1 / x0.9
@@ -119,7 +119,7 @@ def main():
 
     linear_speed = node.declare_parameter('linear_speed', 0.3).value
     angular_speed = node.declare_parameter('angular_speed', 1.0).value
-    topic = node.declare_parameter('topic', '/venom_cmd_vel').value
+    topic = node.declare_parameter('topic', '/cmd_vel').value
 
     pub = node.create_publisher(Twist, topic, 10)
 
@@ -158,12 +158,12 @@ def main():
                 msg.linear.y = dy * linear_speed
 
                 if key == 'e':
-                    # Stop rotation only; keep translation at zero (key released)
+                    # Stop angular motion only; keep translation at zero (key released)
                     current_angular = 0.0
                 elif dth != 0:
-                    # Rotation key: update persistent angular state
+                    # Angular key: update persistent angular state
                     current_angular = dth * angular_speed
-                    # No translation while spinning unless combined
+                    # No translation while angular motion key is active unless combined
                     msg.linear.x = 0.0
                     msg.linear.y = 0.0
             else:
