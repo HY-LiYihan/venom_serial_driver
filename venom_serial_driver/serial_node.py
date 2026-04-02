@@ -4,6 +4,7 @@
 Bridges ROS 2 topics to the proprietary binary protocol used by the DJI C-board.
 Subscribes to /cmd_vel (chassis motion) and /auto_aim (gimbal control + aim state),
 caches the latest values, and sends a control frame whenever either input updates.
+Optionally sends keepalive frames at a configured minimum frequency.
 Publishes /robot_status and /game_status from incoming C-board state frames.
 """
 import os
@@ -56,6 +57,7 @@ class SerialDriverNode(Node):
         self.declare_parameter('default_frame_y', 0)
         self.declare_parameter('pitch_sign', 1.0)
         self.declare_parameter('yaw_sign', 1.0)
+        self.declare_parameter('heartbeat_rate', 0.0)
 
         # Retrieve parameters
         port = self.get_parameter('port_name').value
@@ -72,6 +74,16 @@ class SerialDriverNode(Node):
         self._default_frame_y = self.get_parameter('default_frame_y').value
         self._pitch_sign = float(self.get_parameter('pitch_sign').value)
         self._yaw_sign = float(self.get_parameter('yaw_sign').value)
+        self._heartbeat_rate_hz = float(self.get_parameter('heartbeat_rate').value)
+        if self._heartbeat_rate_hz < 0.0:
+            self.get_logger().warn(
+                f'heartbeat_rate={self._heartbeat_rate_hz:.4f} is invalid; '
+                'using 0.0 (disabled).'
+            )
+            self._heartbeat_rate_hz = 0.0
+        self._heartbeat_period = (
+            1.0 / self._heartbeat_rate_hz if self._heartbeat_rate_hz > 0.0 else 0.0
+        )
 
         self.get_logger().info(f'Initializing serial: {port} @ {baudrate}')
 
@@ -95,6 +107,7 @@ class SerialDriverNode(Node):
         self._latest_auto_aim_time: float | None = None
         self._tx_debug_counter = 0
         self._last_tx_debug_time: float | None = None
+        self._last_ctrl_tx_time: float | None = None
 
         # ---------------------------------------------------------------------------
         # Publishers
@@ -111,8 +124,19 @@ class SerialDriverNode(Node):
         self.auto_aim_sub = self.create_subscription(
             AutoAimCmd, auto_aim_topic, self._auto_aim_callback, 10)
 
-        # Poll serial RX at a fixed rate; TX is event-driven from subscriptions.
+        # Poll serial RX at a fixed rate; TX is event-driven with optional heartbeat.
         self.rx_timer = self.create_timer(1.0 / rate, self._poll_serial_rx)
+        if self._heartbeat_period > 0.0:
+            self.heartbeat_timer = self.create_timer(
+                self._heartbeat_period, self._heartbeat_timer_callback
+            )
+            self.get_logger().info(
+                f'Heartbeat enabled: {self._heartbeat_rate_hz:.3f} Hz '
+                f'(min interval {self._heartbeat_period:.3f}s)'
+            )
+        else:
+            self.heartbeat_timer = None
+            self.get_logger().info('Heartbeat disabled (heartbeat_rate=0)')
 
     # ---------------------------------------------------------------------------
     # Subscription callbacks (cache only)
@@ -181,6 +205,20 @@ class SerialDriverNode(Node):
             else:
                 self.rx_buffer.pop(0)
 
+    def _heartbeat_timer_callback(self) -> None:
+        """Maintain a minimum TX frequency when heartbeat_rate is enabled."""
+        if self._heartbeat_period <= 0.0 or not self.serial.is_connected():
+            return
+
+        now = time.time()
+        if (
+            self._last_ctrl_tx_time is not None
+            and (now - self._last_ctrl_tx_time) < self._heartbeat_period
+        ):
+            return
+
+        self._send_cached_ctrl_frame('heartbeat')
+
     # ---------------------------------------------------------------------------
     # Control frame: merge cached /cmd_vel and /auto_aim, send to C-board
     # ---------------------------------------------------------------------------
@@ -241,6 +279,8 @@ class SerialDriverNode(Node):
         try:
             frame = serial_protocol.pack_ctrl_frame(ctrl)
             self.serial.write_bytes(frame)
+            tx_now = time.time()
+            self._last_ctrl_tx_time = tx_now
             debug_msg = String()
             debug_msg.data = (
                 '[TX:%s] flags=%d vx=%.4f vy=%.4f motion_wz=%.4f world_wz=%.4f '
@@ -261,13 +301,12 @@ class SerialDriverNode(Node):
             )
             self.venom_cmd_pub.publish(debug_msg)
             self._tx_debug_counter += 1
-            now = time.time()
             tx_hz = 0.0
             if self._last_tx_debug_time is not None:
-                dt = now - self._last_tx_debug_time
+                dt = tx_now - self._last_tx_debug_time
                 if dt > 1e-6:
                     tx_hz = 1.0 / dt
-            self._last_tx_debug_time = now
+            self._last_tx_debug_time = tx_now
             # Keep the detailed TX log disabled to avoid continuous console spam.
             # self.get_logger().info(
             #     '[TX:%s] t=%.3f hz=%.1f flags=%d lx=%.4f ly=%.4f lz=%.4f wz=%.4f '
