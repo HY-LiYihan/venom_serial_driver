@@ -6,3 +6,6 @@ serial_node:
     loop_rate: 50
     cmd_vel_topic: "/cmd_vel"
     auto_aim_topic: "/auto_aim"
+    venom_cmd_topic: "/venom_cmd"
+    robot_status_topic: "/robot_status"
+    game_status_topic: "/game_status"

@@ -13,6 +13,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from std_msgs.msg import String
 from auto_aim_interfaces.msg import AutoAimCmd
 
 if __package__:
@@ -47,6 +48,9 @@ class SerialDriverNode(Node):
         self.declare_parameter('loop_rate', 50)
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('auto_aim_topic', '/auto_aim')
+        self.declare_parameter('venom_cmd_topic', '/venom_cmd')
+        self.declare_parameter('robot_status_topic', '/robot_status')
+        self.declare_parameter('game_status_topic', '/game_status')
         self.declare_parameter('vision_timeout', 0.2)
         self.declare_parameter('default_frame_x', 0)
         self.declare_parameter('default_frame_y', 0)
@@ -60,6 +64,9 @@ class SerialDriverNode(Node):
         rate = self.get_parameter('loop_rate').value
         cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
         auto_aim_topic = self.get_parameter('auto_aim_topic').value
+        venom_cmd_topic = self.get_parameter('venom_cmd_topic').value
+        robot_status_topic = self.get_parameter('robot_status_topic').value
+        game_status_topic = self.get_parameter('game_status_topic').value
         self._vision_timeout = self.get_parameter('vision_timeout').value
         self._default_frame_x = self.get_parameter('default_frame_x').value
         self._default_frame_y = self.get_parameter('default_frame_y').value
@@ -92,8 +99,9 @@ class SerialDriverNode(Node):
         # ---------------------------------------------------------------------------
         # Publishers
         # ---------------------------------------------------------------------------
-        self.robot_status_pub = self.create_publisher(RobotStatus, '/robot_status', 10)
-        self.game_status_pub = self.create_publisher(GameStatus, '/game_status', 10)
+        self.robot_status_pub = self.create_publisher(RobotStatus, robot_status_topic, 10)
+        self.game_status_pub = self.create_publisher(GameStatus, game_status_topic, 10)
+        self.venom_cmd_pub = self.create_publisher(String, venom_cmd_topic, 10)
 
         # ---------------------------------------------------------------------------
         # Subscribers
@@ -181,11 +189,12 @@ class SerialDriverNode(Node):
         """Send a control frame composed from the latest cached control inputs.
 
         Field mapping (matches Vision_navigation_ctrl_payload_t in firmware):
-            lx/ly       <- /cmd_vel linear.x/y          (chassis velocity, m/s)
-            lz          <- /cmd_vel angular.z           (chassis motion angular velocity, non-spin, rad/s)
-            chassis_wz  <- fixed 0.0                    (reserved by current project convention)
-            ay          <- /auto_aim pitch                (gimbal pitch angle, rad)
-            az          <- /auto_aim yaw                  (gimbal yaw angle, rad)
+            chassis_vx        <- /cmd_vel linear.x      (chassis velocity, m/s)
+            chassis_vy        <- /cmd_vel linear.y      (chassis velocity, m/s)
+            chassis_motion_wz <- /cmd_vel angular.z     (non-spin motion angular velocity, rad/s)
+            chassis_world_wz  <- fixed 0.0              (world-frame spin, not used for motion control)
+            angular_y         <- /auto_aim pitch        (gimbal pitch angle, rad)
+            angular_z         <- /auto_aim yaw          (gimbal yaw angle, rad)
             flags       <- /auto_aim detected/tracking/fire (bit0/1/2)
             dist        <- /auto_aim distance
             frame_x     <- /auto_aim proj_x
@@ -198,19 +207,19 @@ class SerialDriverNode(Node):
         ctrl = serial_protocol.RobotCtrlData()
 
         # Chassis motion from /cmd_vel.
-        ctrl.lx = float(cmd.linear.x)
-        ctrl.ly = float(cmd.linear.y)
-        # linear_z carries chassis motion angular velocity (non-spin).
-        ctrl.lz = float(cmd.angular.z)
-        # angular_x/chassis_wz is not used in this project convention.
-        ctrl.chassis_wz = 0.0
+        ctrl.chassis_vx = float(cmd.linear.x)
+        ctrl.chassis_vy = float(cmd.linear.y)
+        # chassis_motion_wz carries chassis motion angular velocity (non-spin).
+        ctrl.chassis_motion_wz = float(cmd.angular.z)
+        # chassis_world_wz is not used in current motion control path.
+        ctrl.chassis_world_wz = 0.0
 
         # Gimbal control and aim state from /auto_aim
         aim = self._latest_auto_aim if self._is_auto_aim_recent() else None
         if aim is not None:
-            ctrl.ay = self._pitch_sign * float(aim.pitch)
-            ctrl.az = self._yaw_sign * float(aim.yaw)
-            ctrl.dist = float(aim.distance)
+            ctrl.angular_y = self._pitch_sign * float(aim.pitch)
+            ctrl.angular_z = self._yaw_sign * float(aim.yaw)
+            ctrl.distance = float(aim.distance)
             ctrl.frame_x = int(aim.proj_x)
             ctrl.frame_y = int(aim.proj_y)
             flags = 0
@@ -222,16 +231,35 @@ class SerialDriverNode(Node):
                 flags |= 0x04
             ctrl.flags = flags
         else:
-            ctrl.ay = 0.0
-            ctrl.az = 0.0
-            ctrl.dist = 0.0
+            ctrl.angular_y = 0.0
+            ctrl.angular_z = 0.0
+            ctrl.distance = 0.0
             ctrl.frame_x = self._default_frame_x
             ctrl.frame_y = self._default_frame_y
-            ctrl.flags = 0
+            ctrl.status_flags = 0
 
         try:
             frame = serial_protocol.pack_ctrl_frame(ctrl)
             self.serial.write_bytes(frame)
+            debug_msg = String()
+            debug_msg.data = (
+                '[TX:%s] flags=%d vx=%.4f vy=%.4f motion_wz=%.4f world_wz=%.4f '
+                'pitch=%.4f yaw=%.4f dist=%.4f frame=(%d,%d) raw=%s' % (
+                    trigger_source,
+                    ctrl.status_flags,
+                    ctrl.chassis_vx,
+                    ctrl.chassis_vy,
+                    ctrl.chassis_motion_wz,
+                    ctrl.chassis_world_wz,
+                    ctrl.angular_y,
+                    ctrl.angular_z,
+                    ctrl.distance,
+                    ctrl.frame_x,
+                    ctrl.frame_y,
+                    _hexdump(frame),
+                )
+            )
+            self.venom_cmd_pub.publish(debug_msg)
             self._tx_debug_counter += 1
             now = time.time()
             tx_hz = 0.0
@@ -270,10 +298,10 @@ class SerialDriverNode(Node):
     def _publish_robot_status(self, state) -> None:
         """Publish robot velocity and gimbal angle status."""
         robot_status = RobotStatus()
-        robot_status.velocity.linear.x = float(state.linear_x)
-        robot_status.velocity.linear.y = float(state.linear_y)
-        robot_status.velocity.linear.z = float(state.linear_z)
-        robot_status.velocity.angular.x = float(state.gyro_wz)
+        robot_status.velocity.linear.x = float(state.chassis_vx)
+        robot_status.velocity.linear.y = float(state.chassis_vy)
+        robot_status.velocity.linear.z = float(state.chassis_motion_wz)
+        robot_status.velocity.angular.x = float(state.chassis_world_wz)
         robot_status.velocity.angular.y = float(state.angular_y)
         robot_status.velocity.angular.z = float(state.angular_z)
         robot_status.angular_speed.angular.y = float(state.angular_y_speed)

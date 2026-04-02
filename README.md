@@ -42,8 +42,9 @@ ros2 launch venom_serial_driver serial_driver.launch.py \
 
 | 方向 | 话题 | 消息类型 | 说明 |
 |---|---|---|---|
-| 订阅 | `/cmd_vel` | `geometry_msgs/Twist` | 底盘速度指令（`linear.x/y` + `angular.z`，其中 `angular.z` 映射到协议 `linear_z` 作为底盘运动角速度，非自转） |
+| 订阅 | `/cmd_vel` | `geometry_msgs/Twist` | 底盘速度指令（`linear.x/y` + `angular.z`） |
 | 订阅 | `/auto_aim` | `AutoAimCmd` | 云台角度指令 + 自瞄状态，角度单位为 `rad` |
+| 发布 | `/venom_cmd` | `std_msgs/String` | 实时下发到 C 板的控制命令调试信息（包含关键字段与十六进制帧） |
 | 发布 | `/robot_status` | `RobotStatus` | 底盘速度 + 云台角度反馈，角度单位为 `rad` |
 | 发布 | `/game_status` | `GameStatus` | 比赛状态、血量、热量等 |
 
@@ -60,12 +61,16 @@ serial_node:
     loop_rate: 50               # 定时器频率（Hz）
     cmd_vel_topic: "/cmd_vel"   # 底盘速度指令订阅话题
     auto_aim_topic: "/auto_aim" # 自瞄指令订阅话题
+    venom_cmd_topic: "/venom_cmd" # 调试命令发布话题
+    robot_status_topic: "/robot_status" # 机器人状态发布话题
+    game_status_topic: "/game_status"   # 比赛状态发布话题
 ```
 
 ## 文档
 
 - [通信协议（中文）](docs/protocol_zh.md)
 - [Communication Protocol (English)](docs/protocol.md)
+- [话题输入与输出说明（中文）](docs/topic_io_zh.md)
 
 ## 测试
 

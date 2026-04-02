@@ -1,18 +1,33 @@
-import serial
+import logging
 import threading
+from typing import Optional
+
+import serial
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SerialInterface:
-    def __init__(self, port, baudrate=921600, timeout=0.1):
+    def __init__(self, port: str, baudrate: int = 921600, timeout: float = 0.1):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
-        self.serial = None
+        self._ser: Optional[serial.Serial] = None
         self.lock = threading.Lock()
 
-    def connect(self):
+    @property
+    def serial(self) -> Optional[serial.Serial]:
+        """Backward-compatible alias for the underlying pyserial object."""
+        return self._ser
+
+    @serial.setter
+    def serial(self, value: Optional[serial.Serial]) -> None:
+        self._ser = value
+
+    def connect(self) -> bool:
         try:
-            self.serial = serial.Serial(
+            self._ser = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
                 timeout=self.timeout,
@@ -22,30 +37,32 @@ class SerialInterface:
             )
             return True
         except Exception as e:
-            print(f"Failed to connect: {e}")
+            LOGGER.error("Failed to connect serial port %s: %s", self.port, e)
             return False
 
-    def disconnect(self):
-        if self.serial and self.serial.is_open:
-            self.serial.close()
+    def disconnect(self) -> None:
+        if self._ser and self._ser.is_open:
+            self._ser.close()
 
-    def read_bytes(self, size=1):
+    def read_bytes(self, size: int = 1) -> bytes:
         if not self.is_connected():
             return b''
         try:
             with self.lock:
-                return self.serial.read(size)
-        except Exception:
+                return self._ser.read(size)  # type: ignore[union-attr]
+        except Exception as e:
+            LOGGER.warning("Serial read failed on %s: %s", self.port, e)
             return b''
 
-    def write_bytes(self, data):
+    def write_bytes(self, data: bytes) -> int:
         if not self.is_connected():
             return 0
         try:
             with self.lock:
-                return self.serial.write(data)
-        except Exception:
+                return self._ser.write(data)  # type: ignore[union-attr]
+        except Exception as e:
+            LOGGER.warning("Serial write failed on %s: %s", self.port, e)
             return 0
 
-    def is_connected(self):
-        return self.serial and self.serial.is_open
+    def is_connected(self) -> bool:
+        return bool(self._ser and self._ser.is_open)

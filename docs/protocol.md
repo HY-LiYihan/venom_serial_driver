@@ -59,12 +59,12 @@ Coordinate convention (chassis motion reference frame, based on the radar instal
 | Offset | Field | Type | Description |
 |---|---|---|---|
 | 0–3 | `timestamp_us` | `uint32` | C-board timestamp (microseconds) |
-| 4–7 | `linear_x` | `float32` | Chassis forward/backward velocity (m/s) |
-| 8–11 | `linear_y` | `float32` | Chassis left/right velocity (m/s) |
-| 12–15 | `linear_z` | `float32` | Reserved |
-| 16–19 | `gyro_wz` | `float32` | Chassis rotation angular velocity (rad/s) |
-| 20–23 | `angular_y` | `float32` | Gimbal pitch angle (rad) |
-| 24–27 | `angular_z` | `float32` | Gimbal yaw angle (rad) |
+| 4–7 | `chassis_vx` | `float32` | Chassis velocity along +x (m/s) |
+| 8–11 | `chassis_vy` | `float32` | Chassis velocity along +y (m/s) |
+| 12–15 | `chassis_motion_wz` | `float32` | Chassis motion angular velocity (non-spin, rad/s) |
+| 16–19 | `chassis_world_wz` | `float32` | Chassis rotation angular velocity in world frame (rad/s), not used for motion control |
+| 20–23 | `angular_y` | `float32` | Gimbal pitch angle (rad, single-turn value, not multi-turn, range `[-pi, pi)`) |
+| 24–27 | `angular_z` | `float32` | Gimbal yaw angle (rad, single-turn value, not multi-turn, range `[-pi, pi)`) |
 | 28–31 | `angular_y_speed` | `float32` | Gimbal pitch angular velocity (rad/s) |
 | 32–35 | `angular_z_speed` | `float32` | Gimbal yaw angular velocity (rad/s) |
 | 36–39 | `distance` | `float32` | Reserved |
