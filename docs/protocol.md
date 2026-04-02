@@ -28,15 +28,20 @@ Both directions use the same SOF byte (`0xA5`) and the same 4-byte header format
 **Payload type:** `Vision_navigation_ctrl_payload_t`
 **Payload size:** 33 bytes
 
+Coordinate convention (chassis motion reference frame, based on the radar installation position):
+- Positive `x`: robot forward
+- Positive `y`: robot left
+- Positive `z`: robot up (right-handed frame)
+
 | Offset | Field | Type | Description |
 |---|---|---|---|
 | 0 | `status_flags` | `uint8` | bit0 = armor_detected, bit1 = tracking_state, bit2 = fire |
-| 1–4 | `linear_x` | `float32` | Chassis forward/backward velocity (m/s) |
-| 5–8 | `linear_y` | `float32` | Chassis left/right velocity (m/s) |
-| 9–12 | `linear_z` | `float32` | Chassis motion angular velocity (non-spin, rad/s) |
-| 13–16 | `angular_x` | `float32` | Reserved by current project convention, set to 0 |
-| 17–20 | `angular_y` | `float32` | Gimbal pitch angle command (rad) |
-| 21–24 | `angular_z` | `float32` | Gimbal yaw angle command (rad) |
+| 1–4 | `chassis_vx` | `float32` | Chassis velocity along +x (m/s) |
+| 5–8 | `chassis_vy` | `float32` | Chassis velocity along +y (m/s) |
+| 9–12 | `chassis_motion_wz` | `float32` | Chassis motion angular velocity (non-spin, rad/s) |
+| 13–16 | `chassis_world_wz` | `float32` | Chassis rotation angular velocity in world frame (rad/s), not used for motion control |
+| 17–20 | `angular_y` | `float32` | Gimbal pitch angle command (rad, single-turn value, not multi-turn, range `[-pi, pi)`) |
+| 21–24 | `angular_z` | `float32` | Gimbal yaw angle command (rad, single-turn value, not multi-turn, range `[-pi, pi)`) |
 | 25–28 | `distance` | `float32` | Reserved |
 | 29–30 | `frame_x` | `uint16` | Target pixel x coordinate |
 | 31–32 | `frame_y` | `uint16` | Target pixel y coordinate |
